@@ -1,20 +1,20 @@
-# Decisões de arquitetura
+# Architecture decisions
 
-| Decisão | Motivo |
+| Decision | Rationale |
 |---|---|
-| Python e organização semelhante ao Nino | Manter familiaridade com agentes, schemas, prompts, core e services |
-| DAG como representação intermediária | Representar dependências e resultados compartilhados |
-| Planejamento separado da execução | LLM decide tarefas; Python controla o agendamento |
-| Passes explícitos em compiler/optimizations | Permitir testar cada transformação e registrar o que mudou |
-| Contexto por execução | Evitar misturar resultados e estado entre solicitações |
-| Benchmark isolado | Manter cenários e comparações fora do runtime |
+| Python and a layout similar to Nino | Keep agents, schemas, prompts, core, and services familiar |
+| DAG as the intermediate representation | Represent dependencies and shared results |
+| Planning separate from execution | The LLM decides tasks; Python controls scheduling |
+| Explicit passes in compiler/optimizations | Test each transformation and record changes |
+| Context scoped to each execution | Avoid mixing results and state across requests |
+| Isolated benchmark | Keep scenarios and comparisons outside the runtime |
 
-## Pendências antes da implementação
+## Open decisions before implementation
 
-- Fechar schemas de agente, tarefa, referências, efeitos e resultados.
-- Definir a semântica de falhas, dependências bloqueadas e saídas parciais.
-- Definir o contrato de concorrência dos agentes registrados.
-- Escolher integração com LLM e formato de saída estruturada.
-- Definir como novos planos referenciam resultados de rodadas anteriores.
+- Finalize schemas for agents, tasks, references, effects, and results.
+- Define failure semantics, blocked dependencies, and partial outputs.
+- Define the concurrency contract for registered agents.
+- Choose LLM integration and structured output format.
+- Define how new plans reference results from previous rounds.
 
-Os arquivos atuais são placeholders documentados, sem contratos ou algoritmos implementados.
+Current files are documented placeholders, without implemented contracts or algorithms.

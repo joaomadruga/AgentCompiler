@@ -1,18 +1,18 @@
-# Contexto de pesquisa
+# Research context
 
-O AgentCompiler começou como TCC de João Pedro de Moraes Madruga no CIn/UFPE, orientado por Filipe Carlos de Albuquerque Calegario.
+AgentCompiler began as an undergraduate thesis by João Pedro de Moraes Madruga at UFPE's Center for Informatics, supervised by Filipe Carlos de Albuquerque Calegario.
 
-| Fonte | Papel na reconstrução |
+| Source | Role in the reconstruction |
 |---|---|
-| TCC AgentCompiler | Origem da proposta de planejamento e coordenação de especialistas |
-| Código anterior | Referência histórica, sem importar resultados ou benchmarks como validação da nova versão |
-| LLMCompiler | Base para planos com dependências, despacho e execução assíncrona |
-| Compiladores tradicionais | Base para passes verificáveis sobre uma representação intermediária |
+| AgentCompiler thesis | Origin of the specialist planning and coordination proposal |
+| Previous code | Historical reference; previous results and benchmarks do not validate the new version |
+| LLMCompiler | Basis for dependency plans, dispatch, and asynchronous execution |
+| Traditional compilers | Basis for verifiable passes over an intermediate representation |
 
-## Fontes
+## Sources
 
 - https://github.com/joaomadruga/pipeline-task-automation
 - https://arxiv.org/pdf/2312.04511
 - https://llvm.org/docs/Passes.html
 
-O benchmark anterior será repensado. Não há compromisso nesta etapa com datasets, frameworks de comparação ou métricas experimentais específicas.
+The previous benchmark will be redesigned. No specific datasets, comparison frameworks, or experimental metrics are committed to at this stage.

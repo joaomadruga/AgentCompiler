@@ -1,14 +1,14 @@
 # Roadmap
 
-- [x] Criar esqueleto Python e documentação visual.
-- [ ] Definir contratos de agentes e representação intermediária do plano.
-- [ ] Implementar validação de referências, contratos e ciclos.
-- [ ] Implementar scheduler e executor com concorrência limitada.
-- [ ] Testar dependências, falhas, cancelamento e isolamento por execução.
-- [ ] Implementar deduplicação e eliminação de tarefas mortas com contratos explícitos.
-- [ ] Integrar orquestrador, ferramentas e fábrica de LLM.
-- [ ] Implementar síntese e replanejamento limitado.
-- [ ] Repensar os casos de uso e o protocolo de benchmark.
-- [ ] Produzir demonstração reproduzível e post no LinkedIn com resultados medidos.
+- [x] Create the Python scaffold and visual documentation.
+- [ ] Define agent contracts and the plan's intermediate representation.
+- [ ] Implement reference, contract, and cycle validation.
+- [ ] Implement the scheduler and executor with bounded concurrency.
+- [ ] Test dependencies, failures, cancellation, and execution isolation.
+- [ ] Implement deduplication and dead task elimination with explicit contracts.
+- [ ] Integrate the orchestrator, tools, and LLM factory.
+- [ ] Implement synthesis and bounded replanning.
+- [ ] Redesign use cases and the benchmark protocol.
+- [ ] Produce a reproducible demonstration and a LinkedIn post with measured results.
 
-Streaming e prioridade por caminho crítico serão avaliados depois do núcleo funcional.
+Streaming and critical path prioritization will be evaluated after the runtime is functional.

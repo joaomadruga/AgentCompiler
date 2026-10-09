@@ -1,75 +1,75 @@
 # AgentCompiler
 
-**Orquestração de agentes inspirada em compiladores, com planos estruturados e execução orientada a dependências.**
+**Compiler-inspired agent orchestration through structured plans and dependency-driven execution.**
 
-Evolução do TCC **AgentCompiler: Compilador LLM para Orquestração Paralela de Multiagentes**, de João Pedro de Moraes Madruga, no Centro de Informática da UFPE, orientado por Filipe Carlos de Albuquerque Calegario.
+A continuation of the undergraduate thesis **AgentCompiler: An LLM Compiler for Parallel Multi-Agent Orchestration**, by João Pedro de Moraes Madruga at the Federal University of Pernambuco (UFPE), Center for Informatics, supervised by Filipe Carlos de Albuquerque Calegario.
 
-> **Status: esqueleto inicial.** Os módulos Python contêm apenas suas responsabilidades. Os diagramas descrevem a arquitetura planejada; planejamento, otimizações, execução e benchmarks ainda não estão implementados. Não há resultados de desempenho desta versão.
+> **Status: initial scaffold.** Python modules currently document their intended responsibilities only. The diagrams describe the planned architecture; planning, optimization, execution, and benchmarks are not implemented yet. This version has no performance results.
 
-## Visão geral
+## Overview
 
 ```mermaid
 flowchart LR
-    U[Solicitação] --> O[Orquestrador LLM]
-    R[Registro de agentes] --> O
-    O --> P[Plano de tarefas: DAG]
-    P --> C[Compilador Python]
-    C --> A[Agentes especializados]
-    A --> S[Síntese e avaliação]
-    S --> F[Resposta final]
-    S -. Novo plano com resultados anteriores .-> O
+    U[User request] --> O[LLM orchestrator]
+    R[Agent registry] --> O
+    O --> P[Task plan: DAG]
+    P --> C[Python compiler]
+    C --> A[Specialized agents]
+    A --> S[Synthesis and evaluation]
+    S --> F[Final response]
+    S -. New plan using previous results .-> O
 ```
 
-| O LLM decide | O Python controla |
+| The LLM decides | Python controls |
 |---|---|
-| Decomposição da solicitação | Validação dos contratos e do grafo |
-| Especialistas necessários | Otimizações autorizadas pelo contrato |
-| Entradas e dependências semânticas | Agendamento e concorrência |
-| Síntese e necessidade de replanejar | Estado, limites, falhas e resultados |
+| Request decomposition | Contract and graph validation |
+| Required specialists | Contract-permitted optimizations |
+| Inputs and semantic dependencies | Scheduling and concurrency |
+| Synthesis and whether to replan | State, limits, failures, and results |
 
-## Por que um grafo?
+## Why a graph?
 
-Uma tarefa pode alimentar vários consumidores, e uma tarefa pode depender de vários resultados. O plano representa essas relações explicitamente em um **grafo acíclico dirigido (DAG)**.
+A task may feed multiple consumers, and a task may depend on multiple results. The plan explicitly represents these relationships as a **directed acyclic graph (DAG)**.
 
 ```mermaid
 flowchart LR
-    A[Buscar documento A] --> B[Resumir A]
-    A --> C[Classificar A]
-    D[Buscar documento B] --> E[Resumir B]
-    D --> F[Classificar B]
-    B --> G[Comparar documentos]
+    A[Retrieve document A] --> B[Summarize A]
+    A --> C[Classify A]
+    D[Retrieve document B] --> E[Summarize B]
+    D --> F[Classify B]
+    B --> G[Compare documents]
     C --> G
     E --> G
     F --> G
-    G --> H[Resposta]
+    G --> H[Response]
 ```
 
-**Dependência determina disponibilidade; posição no plano não impõe uma barreira.** Resumir A pode começar assim que buscar A termina, mesmo que buscar B ainda esteja em execução.
+**Dependencies determine readiness; position in the plan does not impose a barrier.** Summarizing A can start as soon as retrieving A finishes, even while retrieving B is still running.
 
-## Pipeline do compilador
+## Compiler pipeline
 
 ```mermaid
 flowchart TD
-    P[Plano do orquestrador] --> V[Validar]
-    V -->|Válido| OPT[Aplicar passes de otimização]
-    V -->|Inválido| ERR[Retornar erros ao orquestrador]
-    OPT --> Q[Scheduler: tarefas prontas]
-    Q --> E[Executor assíncrono]
-    E --> A[Agente registrado]
-    A --> M[Registrar resultado ou falha]
-    M -->|Liberar sucessoras| Q
-    M -->|Execução concluída ou bloqueada| S[Síntese ou replanejamento]
+    P[Orchestrator plan] --> V[Validate]
+    V -->|Valid| OPT[Apply optimization passes]
+    V -->|Invalid| ERR[Return errors to orchestrator]
+    OPT --> Q[Scheduler: ready tasks]
+    Q --> E[Async executor]
+    E --> A[Registered agent]
+    A --> M[Record result or failure]
+    M -->|Release successors| Q
+    M -->|Execution completed or blocked| S[Synthesis or replanning]
 ```
 
-| Etapa | Responsabilidade planejada |
+| Stage | Planned responsibility |
 |---|---|
-| Validação | IDs únicos, agentes registrados, referências válidas, contratos compatíveis e ausência de ciclos |
-| Otimização | Transformar o grafo preservando as saídas solicitadas e os efeitos declarados |
-| Scheduler | Liberar tarefas com dependências satisfeitas, respeitando o limite de concorrência |
-| Executor | Invocar agentes, aplicar limites e registrar término ou falha |
-| Síntese | Produzir a resposta ou solicitar outra rodada de planejamento |
+| Validation | Unique IDs, registered agents, valid references, compatible contracts, and absence of cycles |
+| Optimization | Transform the graph while preserving requested outputs and declared effects |
+| Scheduler | Release tasks with satisfied dependencies within the concurrency limit |
+| Executor | Invoke agents, enforce limits, and record completion or failure |
+| Synthesis | Produce the response or request another planning round |
 
-### Contratos do plano
+### Plan contracts
 
 ```mermaid
 classDiagram
@@ -99,99 +99,100 @@ classDiagram
         usage
     }
     ExecutionPlan "1" --> "*" Task
-    Task --> OutputReference : entradas referenciadas
-    Task --> TaskResult : produz
+    Task --> OutputReference : referenced inputs
+    Task --> TaskResult : produces
 ```
 
-Os nomes acima são conceituais; os schemas Python serão definidos na implementação. Cada tarefa recebe sua instrução e as entradas necessárias, com referências explícitas às saídas anteriores.
+These names are conceptual; Python schemas will be defined during implementation. Each task receives its instruction and required inputs, with explicit references to preceding outputs.
 
-## Otimizações planejadas
+## Planned optimizations
 
-O compilador terá passes separados do planejador e do executor. A primeira implementação deve favorecer transformações verificáveis.
+The compiler will have passes separate from the planner and executor. The initial implementation should favor verifiable transformations.
 
 ```mermaid
 flowchart LR
-    subgraph Before[Antes: trabalho duplicado]
-        A1[Buscar documento] --> B1[Resumir]
-        A2[Buscar o mesmo documento] --> C1[Classificar]
-        B1 --> D1[Resposta]
+    subgraph Before[Before: duplicate work]
+        A1[Retrieve document] --> B1[Summarize]
+        A2[Retrieve same document] --> C1[Classify]
+        B1 --> D1[Response]
         C1 --> D1
     end
-    subgraph After[Depois: resultado compartilhado]
-        A3[Buscar documento uma vez] --> B2[Resumir]
-        A3 --> C2[Classificar]
-        B2 --> D2[Resposta]
+    subgraph After[After: shared result]
+        A3[Retrieve document once] --> B2[Summarize]
+        A3 --> C2[Classify]
+        B2 --> D2[Response]
         C2 --> D2
     end
 ```
 
-| Pass inicial | Condição para aplicar |
+| Initial pass | Application condition |
 |---|---|
-| Deduplicação | Mesma operação, argumentos e contexto relevante; resultado explicitamente reutilizável |
-| Eliminação de tarefas mortas | Saída não alcança nenhum resultado solicitado e tarefa não possui efeitos observáveis |
+| Deduplication | Same operation, arguments, and relevant context; explicitly reusable result |
+| Dead task elimination | Output does not contribute to any requested result and the task has no observable effects |
 
-Duas chamadas LLM com instruções semelhantes não são automaticamente equivalentes. Avaliações independentes devem continuar independentes. Escritas e outras ações externas precisam de efeitos declarados para evitar transformações incorretas.
+Two LLM calls with similar instructions are not automatically equivalent. Independent evaluations must remain independent. Writes and other external actions need declared effects to prevent incorrect transformations.
 
-### Agendamento
+### Scheduling
 
 ```mermaid
 flowchart LR
-    A[Dependências resolvidas] --> B[Fila de tarefas prontas]
-    B --> C{Capacidade disponível?}
-    C -->|Sim| D[Executar tarefa]
-    C -->|Não| E[Aguardar conclusão]
-    D --> F[Atualizar estado e liberar sucessoras]
+    A[Dependencies resolved] --> B[Ready task queue]
+    B --> C{Capacity available?}
+    C -->|Yes| D[Execute task]
+    C -->|No| E[Wait for completion]
+    D --> F[Update state and release successors]
     E --> F
     F --> B
 ```
 
-| Primeira versão | Evoluções a avaliar |
+| Initial version | Potential extensions |
 |---|---|
-| Liberação baseada em ordenação topológica, como Kahn | Prioridade por caminho crítico estimado |
-| Execução conforme tarefas ficam prontas | Estimativas de duração a partir de tracing |
-| Plano completo antes da execução | Planejamento em streaming |
+| Task release based on topological ordering, such as Kahn's algorithm | Priority based on estimated critical path |
+| Execution as tasks become ready | Duration estimates from tracing |
+| Complete plan before execution | Streaming planning |
 
-Ordenação topológica garante uma ordem válida; não garante a menor latência. O benefício depende das dependências, da duração das tarefas e dos limites de recursos.
+Topological ordering guarantees a valid order, not minimum latency. Benefits depend on dependencies, task duration, and resource limits.
 
-## Agentes especializados
+## Specialized agents
 
 ```mermaid
 flowchart LR
-    I[Instrução e entradas] --> A[Agente especializado]
-    C[Contexto da execução] --> A
+    I[Instruction and inputs] --> A[Specialized agent]
+    C[Execution context] --> A
     A <--> L[LLM]
-    A <--> T[Ferramentas]
-    A --> R[Resultado estruturado]
+    A <--> T[Tools]
+    A --> R[Structured result]
 ```
 
-O registro descreve capacidades e contratos. O compilador agenda tarefas, e o mesmo agente pode executar tarefas distintas. A implementação deverá declarar se o agente suporta invocações concorrentes.
+The registry describes capabilities and contracts. The compiler schedules tasks, and the same agent may execute distinct tasks. The implementation must declare whether an agent supports concurrent invocations.
 
-Especialistas de atendimento, pesquisa e outros cenários experimentais serão definidos futuramente dentro de `benchmark/`, sem acoplar o núcleo a um domínio específico.
+Customer support, research, and other experimental specialists will be defined later inside `benchmark/`, keeping the runtime independent of a specific domain.
 
-## Ciclo de execução
+## Execution lifecycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Planejamento
-    Planejamento --> Validacao
-    Validacao --> Planejamento: corrigir plano inválido
-    Validacao --> Execucao: plano validado e otimizado
-    Execucao --> Avaliacao: tarefas concluídas ou execução bloqueada
-    Avaliacao --> Planejamento: replanejar com resultados anteriores
-    Avaliacao --> Resposta: informação suficiente
-    Resposta --> [*]
-    Planejamento --> Encerramento: limite atingido
-    Execucao --> Encerramento: falha sem recuperação
-    Avaliacao --> Encerramento: limite atingido
-    Encerramento --> [*]
+    [*] --> Planning
+    Planning --> Validation
+    Validation --> Planning: repair invalid plan
+    Validation --> Execution: validated and optimized plan
+    Execution --> Evaluation: tasks completed or execution blocked
+    Evaluation --> Planning: replan using previous results
+    Evaluation --> Response: sufficient information
+    Response --> [*]
+    Planning --> Termination: limit reached
+    Execution --> Termination: unrecoverable failure
+    Evaluation --> Termination: limit reached
+    Termination --> [*]
 ```
 
-Replanejamento deve preservar os resultados válidos da execução. Tentativas por falha técnica pertencem ao executor; mudanças no caminho de resolução pertencem ao orquestrador. Rodadas, tentativas, concorrência e duração precisam de limites explícitos.
+Replanning should preserve valid execution results. Technical retries belong to the executor; changes to the resolution strategy belong to the orchestrator. Rounds, attempts, concurrency, and duration need explicit limits.
 
-## Organização do repositório
+## Repository layout
 
 ```text
 AgentCompiler/
+├── AGENTS.md
 ├── src/
 │   ├── agents/
 │   │   ├── orchestrator/
@@ -240,14 +241,14 @@ AgentCompiler/
 └── .env.example
 ```
 
-Arquitetura inspirada na organização do [nino-backend](https://github.com/joaomadruga/nino-backend): agentes com prompts e schemas locais, infraestrutura compartilhada em `core/` e composição em `services/`.
+Architecture inspired by [nino-backend](https://github.com/joaomadruga/nino-backend): agents with local prompts and schemas, shared infrastructure in `core/`, and composition in `services/`.
 
 ```mermaid
 flowchart TD
     S[services] --> A[agents]
     S --> C[compiler]
     A --> CORE[core]
-    C --> CONTRACTS[Contratos de agentes]
+    C --> CONTRACTS[Agent contracts]
     C --> CORE
     B[benchmark] --> S
     EX[examples] --> S
@@ -255,11 +256,11 @@ flowchart TD
     TEST --> C
 ```
 
-**O runtime em `src/` não importa `benchmark/`.** Testes de correção do núcleo ficam em `tests/`; código, testes e artefatos experimentais ficam integralmente em `benchmark/`.
+**The runtime in `src/` must not import `benchmark/`.** Runtime correctness tests belong in `tests/`; experimental code, tests, and artifacts belong entirely in `benchmark/`.
 
-## Desenvolvimento
+## Development
 
-Python **3.12+**, com dependências gerenciadas por **uv**. Ainda não existe CLI de execução do AgentCompiler.
+Python **3.12+**, with dependencies managed by **uv**. There is no AgentCompiler execution CLI yet.
 
 ```bash
 git clone git@github.com:joaomadruga/AgentCompiler.git
@@ -268,38 +269,40 @@ uv sync
 make check
 ```
 
-| Comando | Ação atual |
+| Command | Current action |
 |---|---|
-| `make install` | Instala dependências de desenvolvimento |
-| `make check` | Verifica sintaxe, lint e whitespace |
-| `make lint` | Executa Ruff |
-| `make test` | Executa pytest; a pasta ainda não contém testes, portanto retorna “no tests collected” |
+| `make install` | Install development dependencies |
+| `make check` | Check syntax, lint, and whitespace |
+| `make lint` | Run Ruff |
+| `make test` | Run pytest; no tests exist yet, so it reports “no tests collected” |
 
-Não há dependências de runtime nem chaves obrigatórias nesta etapa. A integração com modelos será definida ao implementar `core/llm.py`.
+No runtime dependencies or API keys are required at this stage. Model integration will be defined when implementing `core/llm.py`.
 
-## Próximas etapas
+**All repository content must be written in English**, including documentation, diagrams, code comments, docstrings, prompts, and developer-facing messages. This project rule is recorded in [AGENTS.md](AGENTS.md).
+
+## Next steps
 
 ```mermaid
 flowchart LR
-    A[1. Esqueleto e documentação] --> B[2. Contratos e validação]
-    B --> C[3. Executor e scheduler]
-    C --> D[4. Passes de otimização]
-    D --> E[5. Orquestrador e integração LLM]
-    E --> F[6. Replanejamento]
-    F --> G[7. Benchmark a definir]
-    G --> H[8. Demonstração e divulgação]
+    A[1. Scaffold and documentation] --> B[2. Contracts and validation]
+    B --> C[3. Executor and scheduler]
+    C --> D[4. Optimization passes]
+    D --> E[5. Orchestrator and LLM integration]
+    E --> F[6. Replanning]
+    F --> G[7. Benchmark design]
+    G --> H[8. Demonstration and publication]
 ```
 
-| Agora | Depois |
+| Now | Later |
 |---|---|
-| Estrutura do AgentCompiler | Implementação e testes de correção |
-| Documentação visual da arquitetura | Definição de casos de uso e benchmarks |
-| Esqueleto de `benchmark/` | Resultados reproduzíveis e gráficos medidos |
+| AgentCompiler structure | Implementation and correctness tests |
+| Visual architecture documentation | Use case and benchmark design |
+| `benchmark/` scaffold | Reproducible results and measured charts |
 
-## Referências
+## References
 
-- [An LLM Compiler for Parallel Function Calling — Kim et al., ICML 2024](https://arxiv.org/pdf/2312.04511): planejamento de dependências, Task Fetching Unit, execução assíncrona e planejamento em streaming.
-- [Implementação anterior do AgentCompiler](https://github.com/joaomadruga/pipeline-task-automation): origem do projeto de TCC.
-- [LLVM: Analysis and Transform Passes](https://llvm.org/docs/Passes.html): referência para eliminação de redundâncias e código morto.
+- [An LLM Compiler for Parallel Function Calling — Kim et al., ICML 2024](https://arxiv.org/pdf/2312.04511): dependency planning, Task Fetching Unit, asynchronous execution, and streaming planning.
+- [Previous AgentCompiler implementation](https://github.com/joaomadruga/pipeline-task-automation): original undergraduate thesis project.
+- [LLVM: Analysis and Transform Passes](https://llvm.org/docs/Passes.html): reference for redundancy and dead code elimination.
 
-Esta reconstrução adapta ideias de compilação à orquestração de agentes. Não constitui uma reprodução dos experimentos do LLMCompiler, e os ganhos publicados naquele artigo não são resultados deste projeto.
+This reconstruction adapts compilation ideas to agent orchestration. It does not reproduce the LLMCompiler experiments, and the gains published in that paper are not results of this project.
