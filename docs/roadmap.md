@@ -8,6 +8,9 @@
 - [x] Contract-permitted deduplication and pure dead-task elimination.
 - [x] Manual integration exercises without unit tests.
 - [x] Documentation centered on verifiable action generation.
+- [x] Pydantic contracts with preserved class identity and subtype-to-base compatibility.
+- [x] Conservative union checks, structured diagnostics, bounded correction and runtime validation.
+- [x] Offline typed-action example and README end-to-end diagram.
 
 ## Proposed research sequence
 
@@ -20,4 +23,4 @@
 7. Evaluate the secondary smaller-model hypothesis with all repair/escalation costs included.
 8. Publish a demonstration and LinkedIn post grounded in measured results and limitations.
 
-These steps are proposals, not implemented features or authorization to start coding. Benchmark design remains deferred. Streaming, scheduling policies and further optimization passes are supporting work, not the main research question.
+The broader language, state-contract and evaluation steps are proposals. Typed contracts and diagnostics provide the implemented first slice. Benchmark design remains deferred. Streaming, scheduling policies and further optimization passes are supporting work, not the main research question.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 
+from ..compiler.type_system import contract_catalog
 from .base import Agent
 from .schemas import AgentSpec
 
@@ -18,7 +19,13 @@ class AgentRegistry:
             self.register(agent)
 
     def register(self, agent: Agent) -> None:
-        spec = AgentSpec.model_validate(agent.spec.model_dump())
+        spec = AgentSpec.model_validate(
+            {
+                **agent.spec.model_dump(),
+                "input_model": agent.spec.input_model,
+                "output_model": agent.spec.output_model,
+            }
+        )
         if spec.id in self._agents:
             raise ValueError(f"Agent already registered: {spec.id}")
         self._agents[spec.id] = agent
@@ -40,7 +47,15 @@ class AgentRegistry:
         return self._locks[agent_id]
 
     def catalog(self) -> list[dict]:
-        return [spec.model_dump(mode="json") for spec in self._specs.values()]
+        catalog = []
+        for spec in self._specs.values():
+            entry = spec.model_dump(mode="json")
+            if spec.input_model is not None:
+                entry["input_contract"] = contract_catalog(spec.input_model)
+            if spec.output_model is not None:
+                entry["output_contract"] = contract_catalog(spec.output_model)
+            catalog.append(entry)
+        return catalog
 
     def snapshot(self) -> AgentRegistry:
         snapshot = AgentRegistry()

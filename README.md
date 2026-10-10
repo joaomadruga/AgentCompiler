@@ -4,7 +4,7 @@
 
 A continuation of **AgentCompiler: An LLM Compiler for Parallel Multi-Agent Orchestration**, the undergraduate thesis by João Pedro de Moraes Madruga at UFPE, supervised by Filipe Carlos de Albuquerque Calegario. The reconstruction now centers on verifiable orchestration rather than parallelism alone.
 
-> **Status:** an orchestration runtime exists, with DAG/schema validation, optimization, bounded execution, structured-response repair, and replanning. The broader contract-driven compilation approach described below is a research direction. Neither hypothesis has been validated; `benchmark/` remains a scaffold.
+> **Status:** an orchestration runtime exists, with Pydantic nominal contracts, inheritance-aware binding checks, structured diagnostics, DAG/schema validation, optimization, bounded execution, repair, and replanning. The broader contract-driven compilation approach described below is a research direction. Neither hypothesis has been validated; `benchmark/` remains a scaffold.
 
 ## The problem: too much responsibility in the orchestrator
 
@@ -42,12 +42,12 @@ flowchart TD
 
 | Language/compiler concept | Property to make explicit | Scope |
 |---|---|---|
-| Restricted intermediate representation | Only registered actions, explicit arguments and references | Existing structured-plan foundation |
-| Types and contracts | Compatible inputs, references and structured outputs | Existing schema/graph checks; partial static knowledge |
+| Restricted intermediate representation | Only registered actions, explicit arguments and references | Implemented structured plans |
+| Types and contracts | Compatible inputs, references and structured outputs | Implemented Pydantic identity/inheritance checks and runtime validation |
 | Preconditions and postconditions | Required state before an action and verified state afterward | Proposed explicit contract layer |
 | Effect system | Permitted state changes and conflicts between actions | Existing effect metadata; broader enforcement proposed |
 | Requirement coverage analysis | Every formalized requirement has an accountable output/check | Proposed; intent must first be translated correctly |
-| Compiler diagnostics and repair | Explain the violated rule and bound correction attempts | Existing validation feedback; richer diagnostics proposed |
+| Compiler diagnostics and repair | Explain the violated rule and bound correction attempts | Implemented structured task/input/type diagnostics and bounded repair |
 
 **A validated plan satisfies the checks encoded in the harness. It does not automatically understand the user's intent, establish factual truth, or guarantee overall answer quality.** State-dependent conditions must be rechecked at execution time; validation cannot guarantee an external service will succeed.
 
@@ -121,6 +121,79 @@ flowchart LR
 
 The DAG represents dependencies and shared results; it is not itself a correctness guarantee. Trusted agent schemas and effect declarations come from the registry. Static checks use available schema information; resolved inputs and actual outputs are checked at runtime. The extended action language and state contracts remain to be designed.
 
+## End-to-end: orchestrator → compiler → executor
+
+```mermaid
+flowchart TD
+    USER[User: produce a local refund receipt] --> ORCH[LLM orchestrator reads trusted catalog]
+    REG[Registry: Pydantic classes, schemas and model ancestry] --> ORCH
+    REG --> COMP[Compiler: check references and nominal types]
+    ORCH --> BAD[Candidate: ConfirmedPayment feeds RefundAuthorization input]
+    BAD --> COMP
+    COMP -->|Incompatible type: no actions run| DIAG[Diagnostic: task, input, expected and received types]
+    DIAG -->|Bounded repair with rejected candidate| ORCH
+    ORCH --> GOOD[Corrected plan: verify → authorize → receipt]
+    GOOD --> COMP
+    COMP -->|Valid; optimize and revalidate| SCHED[Scheduler releases ready tasks]
+    SCHED --> EXEC[Executor resolves and validates inputs]
+    EXEC --> ACTION[Registered Python or LLM agent]
+    EXEC -->|Invalid resolved input| BLOCK
+    ACTION --> OUT[Pydantic validates actual output]
+    OUT -->|Valid| NEXT[Record JSON result and release dependents]
+    NEXT --> SCHED
+    OUT -->|Invalid| BLOCK[Fail task and block dependent actions]
+    NEXT -->|Required outputs ready| SYN[Orchestrator synthesizes answer]
+```
+
+The local receipt example performs no financial action. The diagram combines the live orchestrator's repair path with the typed contracts in [the offline example](examples/typed_contracts.py). That example supplies a corrected plan explicitly; it does not call an LLM.
+
+### Declare contracts with Pydantic
+
+```python
+from pydantic import BaseModel, ConfigDict
+from src import AgentSpec, Effect
+
+class Payment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    purchase_id: str
+
+class ConfirmedPayment(Payment):
+    transaction_id: str
+
+class ReviewInput(BaseModel):
+    payment: Payment
+
+spec = AgentSpec(
+    id="review_payment",
+    description="Review supplied payment data.",
+    input_model=ReviewInput,
+    output_model=Payment,
+    effect=Effect.PURE,
+)
+```
+
+| Connection | Compile-time result |
+|---|---|
+| `ConfirmedPayment` → `Payment` | Accepted: declared subtype to base |
+| `Payment` → `ConfirmedPayment` | Rejected: base does not guarantee subtype |
+| Unrelated models with identical fields | Rejected: shape does not establish nominal identity |
+| `ConfirmedPayment | PaymentRejected` → `ConfirmedPayment` | Rejected: not every source branch fits |
+| Matching success/failure union → compatible union input | Accepted; the consumer handles its declared alternatives |
+
+`input_model` is an object model. `output_model` accepts a model or union of models. Classes stay in the trusted Python registry; the planner receives JSON schemas, type names, and ancestry metadata. References into nested model fields and supported containers retain their declared types. Subtype compatibility concerns model identity; field constraints and custom validators are checked against actual data.
+
+`FunctionAgent` handlers keep receiving JSON dictionaries and may return JSON or a `BaseModel`. Base-typed consumers receive their declared fields; subtype-only fields are omitted at that boundary. Strict JSON validation checks literal inputs, resolved input values, and outputs, including custom Pydantic validators. JSON-native representations such as date strings follow Pydantic's strict JSON semantics.
+
+Existing `input_schema`/`output_schema` registrations remain supported. A typed input reference requires a producer with an `output_model`; schema-only producers cannot establish nominal compatibility. RootModel wrappers, aliases, and excluded fields are rejected in typed contracts to keep reference paths unambiguous. Use discriminated unions when alternative models represent different outcomes. Union paths must exist in every branch; there is no conditional narrowing or automatic success extraction. Unsupported or unknown nominal connections are rejected conservatively. Container indices/keys and data-dependent constraints can still fail at runtime.
+
+Use deterministic, validation-only or idempotent Pydantic validators. The registry trusts the developer's output declarations; type validation is not an authorization token or proof of factual truth. State preconditions/postconditions and requirement coverage remain future work.
+
+```bash
+uv run python -m examples.typed_contracts
+```
+
+On rejection, `PlanValidationError.diagnostics` contains `PlanDiagnostic` records, and `as_dict()` returns a JSON-ready diagnostic envelope. The built-in LLM adapter sends these diagnostics together with the rejected candidate for bounded correction; repair events retain diagnostic details. Exhausting the planning budget fails before agent dispatch. Direct compiler callers receive the error and choose their own repair policy.
+
 ## Implemented optimizations
 
 The compiler applies independent passes after graph validation and validates the resulting graph again. Each transformation is recorded in the execution report.
@@ -184,7 +257,7 @@ The registry describes capabilities and contracts. The compiler schedules tasks,
 
 | Agent | Execution |
 |---|---|
-| `FunctionAgent` | An async Python function receiving instruction, resolved inputs, and run context |
+| `FunctionAgent` | An async Python function receiving instruction, validated JSON inputs, and run context; returns JSON or a Pydantic model |
 | `LLMAgent` | A caller-provided role prompt and model, optionally using real registered tools |
 
 Tool inputs and outputs are schema-validated. Tool observations feed the next model call. Tool calls within a specialist execute sequentially; separate DAG tasks execute concurrently. An agent's effect, reuse, retry, and concurrency declarations must be compatible with its tools.
@@ -403,7 +476,7 @@ flowchart LR
     E --> F[Demonstration and publication]
 ```
 
-The current runtime is a foundation, not an implementation of every proposed guarantee. Explicit state preconditions/postconditions, requirement coverage checks, formal effect policies, and automatic model escalation are proposed work. Benchmark design remains deferred; no runtime changes are part of this documentation revision.
+The current runtime is a foundation, not an implementation of every proposed guarantee. Explicit state preconditions/postconditions, requirement coverage checks, formal effect policies, and automatic model escalation are proposed work. Benchmark design remains deferred. The implemented first slice adds nominal Pydantic typing, structured diagnostics and runtime checks.
 
 See [architecture](docs/architecture.md), [research hypotheses](docs/research.md), and [roadmap](docs/roadmap.md) for scope and evidence boundaries. Previous manual integrations are functionality checks, not evidence that either hypothesis holds.
 

@@ -17,9 +17,11 @@ from jsonschema.exceptions import ValidationError as SchemaValidationError
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
 
-from ..agents.base import Agent, AgentExecutionError
+from ..agents.base import Agent, AgentExecutionError, serialize_output
 from ..agents.context import AgentContext, ExecutionContext
 from ..compiler.schemas import Usage
+from ..compiler.type_system import validate_input_model, validate_json_type
+from ..compiler.validation import PlanValidationError
 from .config import Settings
 
 T = TypeVar("T", bound=BaseModel)
@@ -184,6 +186,7 @@ class OpenAIChatModel:
         ]
         last_error = ""
         for attempt in range(context.settings.max_plan_attempts):
+            message = None
             try:
                 message = await self._complete(
                     messages, context, response_format=self._format(json_schema, schema.__name__)
@@ -194,7 +197,15 @@ class OpenAIChatModel:
                 return result
             except (ValidationError, ValueError) as error:
                 last_error = str(error)
-                context.emit("structured_repair", schema=schema.__name__, attempt=attempt + 1)
+                details = error.as_dict() if isinstance(error, PlanValidationError) else {}
+                context.emit(
+                    "structured_repair",
+                    schema=schema.__name__,
+                    attempt=attempt + 1,
+                    **details,
+                )
+                if message is not None and message.content:
+                    messages.append({"role": "assistant", "content": message.content})
                 messages.append({"role": "user", "content": REPAIR_INSTRUCTION + last_error[:6000]})
             except AgentExecutionError as error:
                 if not error.retryable:
@@ -283,11 +294,18 @@ class OpenAIChatModel:
                     context.emit("tool_started", tool_id=tool.spec.id)
                     try:
                         arguments = json.loads(call.function.arguments)
-                        Draft202012Validator(tool.spec.input_schema).validate(arguments)
+                        if tool.spec.input_model is not None:
+                            arguments = validate_input_model(tool.spec.input_model, arguments, {})
+                        else:
+                            Draft202012Validator(tool.spec.input_schema).validate(arguments)
                         # Sequential calls avoid overlapping external effects inside an agent.
                         async with asyncio.timeout(context.run.settings.task_timeout_seconds):
-                            output = JSON.validate_python(
+                            output = serialize_output(
                                 await tool.run(instruction, arguments, context)
+                            )
+                        if tool.spec.output_model is not None:
+                            output = serialize_output(
+                                validate_json_type(tool.spec.output_model, output)
                             )
                         Draft202012Validator(tool.spec.output_schema).validate(output)
                         observation = {"ok": True, "output": output}

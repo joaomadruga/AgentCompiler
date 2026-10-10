@@ -9,11 +9,12 @@ from copy import deepcopy
 
 from pydantic import JsonValue, TypeAdapter
 
-from ..agents.base import AgentExecutionError
+from ..agents.base import AgentExecutionError, serialize_output
 from ..agents.context import AgentContext, ExecutionContext
 from ..agents.registry import AgentRegistry
 from .schemas import Task, TaskResult, TaskStatus
-from .validation import resolve_inputs, validate_value
+from .type_system import validate_input_model, validate_json_type
+from .validation import reference_input_types, resolve_inputs, validate_value
 
 
 class TaskExecutor:
@@ -28,7 +29,14 @@ class TaskExecutor:
         attempts = 0
         try:
             inputs = resolve_inputs(task, context.results)
-            validate_value(inputs, spec.input_schema, "Agent inputs")
+            if spec.input_model is not None:
+                inputs = validate_input_model(
+                    spec.input_model,
+                    inputs,
+                    reference_input_types(task, self.registry, context.results),
+                )
+            else:
+                validate_value(inputs, spec.input_schema, "Agent inputs")
             timeout = context.settings.task_timeout_seconds
             async with asyncio.timeout(timeout):
                 limit = context.settings.max_task_attempts if spec.retry_safe else 1
@@ -43,6 +51,9 @@ class TaskExecutor:
                         else:
                             async with self.registry.lock(task.agent_id):
                                 output = await agent.run(task.instruction, deepcopy(inputs), local)
+                        output = serialize_output(output)
+                        if spec.output_model is not None:
+                            output = serialize_output(validate_json_type(spec.output_model, output))
                         output = TypeAdapter(JsonValue).validate_python(output)
                         json.dumps(output, allow_nan=False)
                         validate_value(output, spec.output_schema, "Agent output")

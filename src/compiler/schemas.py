@@ -16,6 +16,16 @@ class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True, allow_inf_nan=False)
 
 
+class PlanDiagnostic(Contract):
+    code: str
+    message: str
+    task_id: str | None = None
+    input_name: str | None = None
+    source_task_id: str | None = None
+    expected_type: str | None = None
+    received_type: str | None = None
+
+
 class OutputReference(Contract):
     task_id: Identifier
     path: str = Field(

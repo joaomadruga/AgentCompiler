@@ -33,7 +33,7 @@ Preserve proper names and exact source identifiers. Conversations with the user 
 
 ## Current scope and sequencing
 
-The repository now contains an implemented runtime, visual architecture documentation, and runnable examples. Live-provider evaluation and benchmarks are still pending. Keep status descriptions accurate as implementation progresses.
+The repository now contains an implemented runtime with Pydantic nominal contracts, conservative union compatibility, structured planning diagnostics, visual architecture documentation, and runnable examples. Live-provider evaluation and benchmarks are still pending. Keep status descriptions accurate as implementation progresses.
 
 The benchmark design is intentionally deferred. Do not carry over the old datasets, comparisons, or customer-support and research scenarios as settled requirements. Do not implement benchmark scenarios until their purpose and protocol have been agreed with the user.
 
@@ -87,6 +87,14 @@ Before writing or modifying any prompt, consult the connected Research Agent MCP
 - Define failure, retry, timeout, cancellation, and blocked-dependency semantics explicitly. Technical retries belong to execution; changes in resolution strategy belong to orchestration.
 - Preserve valid results across replanning rounds and bound rounds, attempts, concurrency, and duration.
 - Evaluate streaming planning and critical-path prioritization after the basic runtime works.
+
+## Typed contract rules
+
+Preserve Pydantic class identity in registry snapshots. The compiler accepts model subtypes for base inputs, rejects the reverse and unrelated models, and requires every source-union branch to fit a target branch. Typed references require typed producers; do not silently treat matching JSON shapes as nominal compatibility.
+
+Keep JSON paths explicit; typed RootModel wrappers, aliases, and excluded fields are unsupported. Validate actual data with strict Pydantic validation, including custom validators. Base-typed JSON consumers see their declared fields. Validators must be deterministic and validation-only or idempotent; external state checks belong to actions. Literal data and model class names are not proofs of authorization or truth.
+
+Planning diagnostics must identify affected tasks/inputs and expected/received types where applicable. Feed diagnostics and the rejected candidate into bounded repair, then revalidate the complete plan. Preserve legacy schema registrations. State preconditions/postconditions, requirement coverage, conditional union narrowing, and automatic model escalation remain deferred.
 
 ## Optimization correctness
 

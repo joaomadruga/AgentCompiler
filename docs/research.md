@@ -16,7 +16,7 @@ A smaller planning model, supported by compilation and bounded repair, may appro
 
 | Claim | Current status |
 |---|---|
-| Structured planning, schema/graph checks, execution and bounded repair exist | Implemented foundation; manually exercised |
+| Structured planning, Pydantic nominal contracts, schema/graph checks, diagnostic-guided repair and execution exist | Implemented first slice; manually exercised |
 | Explicit state contracts and requirement coverage are enforced | Proposed; not implemented |
 | Compilation improves end-to-end action reliability | Unvalidated central hypothesis |
 | A smaller model saves resources at comparable reliability | Unvalidated secondary hypothesis |

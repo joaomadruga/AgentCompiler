@@ -2,20 +2,35 @@
 
 from __future__ import annotations
 
+import json
 from collections import deque
 from copy import deepcopy
+from typing import Any
 
 from jsonschema import Draft202012Validator
-from pydantic import JsonValue
+from pydantic import BaseModel, JsonValue
 
 from ..agents.registry import AgentRegistry
-from .schemas import ExecutionPlan, OutputReference, Task, TaskResult, TaskStatus
+from .schemas import ExecutionPlan, OutputReference, PlanDiagnostic, Task, TaskResult, TaskStatus
+from .type_system import (
+    assignable,
+    type_at_pointer,
+    type_name,
+    validate_input_model,
+    validate_json_type,
+)
 
 
 class PlanValidationError(ValueError):
-    def __init__(self, issues: list[str]) -> None:
+    def __init__(self, issues: list[str], diagnostics: list[PlanDiagnostic] | None = None) -> None:
         self.issues = issues
-        super().__init__("Invalid execution plan: " + "; ".join(issues))
+        self.diagnostics = diagnostics or [
+            PlanDiagnostic(code="invalid_plan", message=issue) for issue in issues
+        ]
+        super().__init__("Invalid execution plan: " + json.dumps(self.as_dict()))
+
+    def as_dict(self) -> dict:
+        return {"diagnostics": [item.model_dump(mode="json") for item in self.diagnostics]}
 
 
 def validate_value(value: JsonValue, schema: dict, label: str) -> None:
@@ -85,6 +100,7 @@ def validate_plan(
 ) -> None:
     previous = previous or {}
     issues: list[str] = []
+    diagnostics: list[PlanDiagnostic] = []
     tasks = {task.id: task for task in plan.tasks}
     if len(tasks) != len(plan.tasks):
         issues.append("Task IDs must be unique.")
@@ -118,7 +134,7 @@ def validate_plan(
             issues.append(f"Task {task.id}: input names must be unique.")
         if len(set(task.dependencies)) != len(task.dependencies):
             issues.append(f"Task {task.id}: dependencies must be unique.")
-        for dependency in task.dependency_ids():
+        for dependency in sorted(task.dependency_ids()):
             if dependency == task.id:
                 issues.append(f"Task {task.id}: self-dependency is not allowed.")
             if dependency not in tasks:
@@ -132,6 +148,13 @@ def validate_plan(
             spec = registry.spec(task.agent_id)
         except ValueError as error:
             issues.append(str(error))
+            continue
+        if spec.input_model is not None:
+            typed_issues = validate_typed_bindings(
+                task, spec.input_model, tasks, registry, previous
+            )
+            diagnostics.extend(typed_issues)
+            issues.extend(item.message for item in typed_issues)
             continue
         required = set(spec.input_schema.get("required", []))
         properties = spec.input_schema.get("properties", {})
@@ -192,7 +215,115 @@ def validate_plan(
     if not issues:
         topological_order(plan)
     if issues:
-        raise PlanValidationError(issues)
+        typed_messages = {item.message for item in diagnostics}
+        diagnostics.extend(
+            PlanDiagnostic(code="invalid_plan", message=issue)
+            for issue in issues
+            if issue not in typed_messages
+        )
+        raise PlanValidationError(issues, diagnostics)
+
+
+def validate_typed_bindings(
+    task: Task,
+    model: type[BaseModel],
+    tasks: dict[str, Task],
+    registry: AgentRegistry,
+    previous: dict[str, TaskResult],
+) -> list[PlanDiagnostic]:
+    diagnostics: list[PlanDiagnostic] = []
+    names = {binding.name for binding in task.inputs}
+    for name, field in model.model_fields.items():
+        if field.is_required() and name not in names:
+            diagnostics.append(
+                PlanDiagnostic(
+                    code="missing_input",
+                    message=f"Task {task.id}: missing required input {name}.",
+                    task_id=task.id,
+                    input_name=name,
+                    expected_type=type_name(field.rebuild_annotation()),
+                )
+            )
+    for binding in task.inputs:
+        field = model.model_fields.get(binding.name)
+        if field is None:
+            diagnostics.append(
+                PlanDiagnostic(
+                    code="unknown_input",
+                    message=f"Task {task.id}: unknown input {binding.name}.",
+                    task_id=task.id,
+                    input_name=binding.name,
+                )
+            )
+            continue
+        target = field.rebuild_annotation()
+        source = None
+        try:
+            if binding.reference is None:
+                validate_json_type(target, binding.value)
+            else:
+                ref = binding.reference
+                source_id = (
+                    tasks[ref.task_id].agent_id
+                    if ref.task_id in tasks
+                    else (previous[ref.task_id].agent_id)
+                )
+                producer = registry.spec(source_id)
+                if producer.output_model is None:
+                    raise ValueError("Typed inputs require a producer with an output_model.")
+                source = type_at_pointer(producer.output_model, ref.path)
+                if not assignable(source, target):
+                    diagnostics.append(
+                        PlanDiagnostic(
+                            code="incompatible_type",
+                            message=f"Task {task.id}: incompatible type for input {binding.name}.",
+                            task_id=task.id,
+                            input_name=binding.name,
+                            source_task_id=ref.task_id,
+                            expected_type=type_name(target),
+                            received_type=type_name(source),
+                        )
+                    )
+                elif ref.task_id not in tasks:
+                    validate_json_type(source, resolve_reference(ref, previous))
+        except (ValueError, KeyError, TypeError) as error:
+            diagnostics.append(
+                PlanDiagnostic(
+                    code="invalid_binding",
+                    message=f"Task {task.id} input {binding.name}: {error}",
+                    task_id=task.id,
+                    input_name=binding.name,
+                    source_task_id=binding.reference.task_id if binding.reference else None,
+                    expected_type=type_name(target),
+                    received_type=type_name(source) if source is not None else None,
+                )
+            )
+    if not diagnostics and all(binding.reference is None for binding in task.inputs):
+        try:
+            validate_input_model(model, resolve_inputs(task, {}), {})
+        except ValueError as error:
+            diagnostics.append(
+                PlanDiagnostic(
+                    code="invalid_inputs",
+                    message=f"Task {task.id}: {error}",
+                    task_id=task.id,
+                )
+            )
+    return diagnostics
+
+
+def reference_input_types(
+    task: Task, registry: AgentRegistry, results: dict[str, TaskResult]
+) -> dict[str, Any]:
+    sources = {}
+    for binding in task.inputs:
+        if binding.reference is not None:
+            result = results[binding.reference.task_id]
+            producer = registry.spec(result.agent_id)
+            if producer.output_model is None:
+                raise ValueError("Typed inputs require a producer with an output_model.")
+            sources[binding.name] = type_at_pointer(producer.output_model, binding.reference.path)
+    return sources
 
 
 def schema_at_pointer(schema: dict, pointer: str) -> dict | None:

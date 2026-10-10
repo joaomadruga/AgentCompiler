@@ -7,7 +7,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Protocol
 
-from pydantic import JsonValue, TypeAdapter
+from pydantic import BaseModel, JsonValue, TypeAdapter
 
 from .context import AgentContext
 from .schemas import AgentSpec, Effect
@@ -16,7 +16,13 @@ if TYPE_CHECKING:
     from ..core.llm import LanguageModel
 
 JSON = TypeAdapter(JsonValue)
-AgentHandler = Callable[[str, dict[str, JsonValue], AgentContext], Awaitable[JsonValue]]
+AgentHandler = Callable[[str, dict[str, JsonValue], AgentContext], Awaitable[JsonValue | BaseModel]]
+
+
+def serialize_output(value: JsonValue | BaseModel) -> JsonValue:
+    if isinstance(value, BaseModel):
+        value = value.model_dump(mode="json")
+    return JSON.validate_python(value)
 
 
 class AgentExecutionError(Exception):
@@ -48,8 +54,8 @@ class FunctionAgent:
     ) -> JsonValue:
         if not self.spec.concurrent:
             async with self._lock:
-                return JSON.validate_python(await self.handler(instruction, inputs, context))
-        return JSON.validate_python(await self.handler(instruction, inputs, context))
+                return serialize_output(await self.handler(instruction, inputs, context))
+        return serialize_output(await self.handler(instruction, inputs, context))
 
 
 class LLMAgent:
