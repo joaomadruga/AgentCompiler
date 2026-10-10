@@ -27,7 +27,7 @@ Preserve proper names and exact source identifiers. Conversations with the user 
 
 ## Current scope and sequencing
 
-The repository currently contains a scaffold and architecture documentation, not an implemented runtime. Keep status descriptions accurate as implementation progresses.
+The repository now contains an implemented runtime, visual architecture documentation, and runnable examples. Live-provider evaluation and benchmarks are still pending. Keep status descriptions accurate as implementation progresses.
 
 The benchmark design is intentionally deferred. Do not carry over the old datasets, comparisons, or customer-support and research scenarios as settled requirements. Do not implement benchmark scenarios until their purpose and protocol have been agreed with the user.
 
@@ -65,6 +65,10 @@ Runtime code in `src/` must not import `benchmark/`. Domain-specific experimenta
 
 Implement application logic, runtime components, analysis, and benchmark tooling in Python. Use `pyproject.toml` and uv for dependency management; update `uv.lock` when dependencies change. Configuration and data files may use suitable formats such as JSON or YAML.
 
+## Prompt research requirement
+
+Before writing or modifying any prompt, consult the connected Research Agent MCP for relevant prompting techniques and read the supporting source or wiki page. Record the consulted sources in the prompt module or `docs/prompts.md`. Do not substitute an unresearched generic prompt. If the Research Agent is unavailable, complete independent work and report the missing capability before authoring prompts.
+
 ## Runtime design principles
 
 - The orchestrator decides what work is needed and which data dependencies exist. Python controls validation, optimization, scheduling, and execution.
@@ -94,7 +98,7 @@ Dead task elimination starts from the declared requested outputs and preserves r
 - Prefer clear typed contracts, explicit construction, and small components with concrete responsibilities. Avoid speculative abstractions and placeholder APIs presented as working features.
 - Test behavior that matters: dependency resolution, actual concurrency, graph validation, optimization preservation, failure propagation, cancellation, and run isolation.
 - Separate deterministic correctness tests from paid or network-dependent experiments.
-- Run `make check` for syntax, Ruff, and whitespace validation. Run relevant tests when implemented behavior changes. The scaffold currently has no tests, so `make test` reports no tests collected.
+- Do not create or run unit tests unless the user explicitly changes this instruction. Validate changes with `make check`, runnable examples, and scoped manual integration checks. Keep integration exercises distinct from benchmark claims.
 - Keep the README detailed but primarily visual: Mermaid diagrams, repository trees, and compact comparison tables. Use measured charts only when real data exists.
 - Clearly distinguish implemented features, planned features, illustrative examples, and measured results.
 - Update the README, architecture notes, and roadmap when accepted architecture or functionality changes.

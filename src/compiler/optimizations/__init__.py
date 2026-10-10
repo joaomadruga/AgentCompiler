@@ -1,1 +1,1 @@
-"""Planned optimization passes over the validated task graph."""
+"""Contract-preserving optimization passes over validated task graphs."""

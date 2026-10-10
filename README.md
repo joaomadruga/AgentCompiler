@@ -4,7 +4,7 @@
 
 A continuation of the undergraduate thesis **AgentCompiler: An LLM Compiler for Parallel Multi-Agent Orchestration**, by João Pedro de Moraes Madruga at the Federal University of Pernambuco (UFPE), Center for Informatics, supervised by Filipe Carlos de Albuquerque Calegario.
 
-> **Status: initial scaffold.** Python modules currently document their intended responsibilities only. The diagrams describe the planned architecture; planning, optimization, execution, and benchmarks are not implemented yet. This version has no performance results.
+> **Status: implemented runtime.** DAG validation, optimization, asynchronous execution, LLM planning, tool-enabled specialists, synthesis, and bounded replanning are implemented. Integration was exercised with Python agents and a local Chat Completions endpoint. No unit tests were created or run. Live-provider quality and performance benchmarks remain unverified; `benchmark/` is still an empty scaffold.
 
 ## Overview
 
@@ -61,7 +61,7 @@ flowchart TD
     M -->|Execution completed or blocked| S[Synthesis or replanning]
 ```
 
-| Stage | Planned responsibility |
+| Stage | Runtime responsibility |
 |---|---|
 | Validation | Unique IDs, registered agents, valid references, compatible contracts, and absence of cycles |
 | Optimization | Transform the graph while preserving requested outputs and declared effects |
@@ -83,9 +83,15 @@ classDiagram
         instruction
         inputs
         dependencies
-        output_contract
-        effects
+
+    }
+    class AgentSpec {
+        input_schema
+        output_schema
+        effect
         reusable
+        retry_safe
+        concurrent
     }
     class OutputReference {
         task_id
@@ -99,15 +105,18 @@ classDiagram
         usage
     }
     ExecutionPlan "1" --> "*" Task
+    Task --> AgentSpec : agent_id
     Task --> OutputReference : referenced inputs
     Task --> TaskResult : produces
 ```
 
-These names are conceptual; Python schemas will be defined during implementation. Each task receives its instruction and required inputs, with explicit references to preceding outputs.
+Tasks bind named inputs to literal JSON values or references to earlier outputs. Reference paths use RFC 6901 JSON pointers: `""` selects the entire output, and `"/words"` selects a field. References create dependencies automatically; `dependencies` adds semantic ordering constraints.
 
-## Planned optimizations
+Agent schemas and effect declarations come from the trusted registry, not from the LLM. Contracts are validated before execution where their shape is known and again against actual inputs and outputs at runtime.
 
-The compiler will have passes separate from the planner and executor. The initial implementation should favor verifiable transformations.
+## Implemented optimizations
+
+The compiler applies independent passes after graph validation and validates the resulting graph again. Each transformation is recorded in the execution report.
 
 ```mermaid
 flowchart LR
@@ -125,10 +134,10 @@ flowchart LR
     end
 ```
 
-| Initial pass | Application condition |
+| Pass | Application condition |
 |---|---|
-| Deduplication | Same operation, arguments, and relevant context; explicitly reusable result |
-| Dead task elimination | Output does not contribute to any requested result and the task has no observable effects |
+| Deduplication | Same registered agent/version, instruction, bindings, and dependencies within one run; explicitly reusable result |
+| Dead task elimination | Task is explicitly pure and does not contribute to a requested output or a read/write task |
 
 Two LLM calls with similar instructions are not automatically equivalent. Independent evaluations must remain independent. Writes and other external actions need declared effects to prevent incorrect transformations.
 
@@ -145,11 +154,11 @@ flowchart LR
     F --> B
 ```
 
-| Initial version | Potential extensions |
+| Implemented | Future extension |
 |---|---|
-| Task release based on topological ordering, such as Kahn's algorithm | Priority based on estimated critical path |
-| Execution as tasks become ready | Duration estimates from tracing |
-| Complete plan before execution | Streaming planning |
+| Topological validation and dependency-driven readiness | Automatic duration estimation from traces |
+| FIFO or estimated critical-path priority | Streaming planning |
+| Bounded concurrency and no layer barriers | Further optimization passes |
 
 Topological ordering guarantees a valid order, not minimum latency. Benefits depend on dependencies, task duration, and resource limits.
 
@@ -164,7 +173,14 @@ flowchart LR
     A --> R[Structured result]
 ```
 
-The registry describes capabilities and contracts. The compiler schedules tasks, and the same agent may execute distinct tasks. The implementation must declare whether an agent supports concurrent invocations.
+The registry describes capabilities and contracts. The compiler schedules tasks, and the same agent may execute distinct tasks. `concurrent=False` serializes invocations of a registered agent across runs sharing the registry, on the same event loop.
+
+| Agent | Execution |
+|---|---|
+| `FunctionAgent` | An async Python function receiving instruction, resolved inputs, and run context |
+| `LLMAgent` | A caller-provided role prompt and model, optionally using real registered tools |
+
+Tool inputs and outputs are schema-validated. Tool observations feed the next model call. Tool calls within a specialist execute sequentially; separate DAG tasks execute concurrently. An agent's effect, reuse, retry, and concurrency declarations must be compatible with its tools.
 
 Customer support, research, and other experimental specialists will be defined later inside `benchmark/`, keeping the runtime independent of a specific domain.
 
@@ -186,7 +202,18 @@ stateDiagram-v2
     Termination --> [*]
 ```
 
-Replanning should preserve valid execution results. Technical retries belong to the executor; changes to the resolution strategy belong to the orchestrator. Rounds, attempts, concurrency, and duration need explicit limits.
+Replanning preserves successful results. Every new task needs a fresh ID; new plans can reference successful results from previous rounds. Removed task IDs remain reserved. Retrying a task requires both a retry-safe agent contract and an explicitly retryable `AgentExecutionError`.
+
+| Outcome | Behavior |
+|---|---|
+| Task failure | Dependent tasks become blocked; independent work continues |
+| Task timeout | Task fails; dependencies become blocked |
+| Run timeout | Running tasks are cancelled and partial results are retained |
+| Caller cancellation | Child tasks are cancelled and awaited; cancellation propagates |
+| Uncertain write-tool failure | Specialist fails without automatic replay of the tool loop |
+| Replanning budget exhausted | Run stops without claiming completion |
+
+Cancellation cannot undo external effects. Handlers must be cooperative async functions and handle their own external cleanup.
 
 ## Repository layout
 
@@ -194,6 +221,8 @@ Replanning should preserve valid execution results. Technical retries belong to 
 AgentCompiler/
 ├── AGENTS.md
 ├── src/
+│   ├── __init__.py          # Public runtime API
+│   ├── __main__.py          # Service-factory CLI
 │   ├── agents/
 │   │   ├── orchestrator/
 │   │   │   ├── agent.py
@@ -260,13 +289,14 @@ flowchart TD
 
 ## Development
 
-Python **3.12+**, with dependencies managed by **uv**. There is no AgentCompiler execution CLI yet.
+Python **3.12+**, with dependencies managed by **uv**. The source package uses `src` imports, following the project layout.
 
 ```bash
 git clone git@github.com:joaomadruga/AgentCompiler.git
 cd AgentCompiler
-uv sync
+uv sync --locked
 make check
+make demo
 ```
 
 | Command | Current action |
@@ -274,13 +304,88 @@ make check
 | `make install` | Install development dependencies |
 | `make check` | Check syntax, lint, and whitespace |
 | `make lint` | Run Ruff |
-| `make test` | Run pytest; no tests exist yet, so it reports “no tests collected” |
+| `make demo` | Execute a Python-only example with deduplication and dead task elimination |
+| `make test` | Reserved pytest command; no unit tests were added or run |
 
-No runtime dependencies or API keys are required at this stage. Model integration will be defined when implementing `core/llm.py`.
+### Python-only execution
+
+```python
+import asyncio
+from src import AgentCompiler
+from examples.parallel_plan import build_plan, build_registry
+
+async def main():
+    compiler = AgentCompiler(build_registry())
+    report = await compiler.execute(build_plan())
+    print(report.outputs)  # {"summary": {"total_words": 10}}
+    print(report.changes)
+
+asyncio.run(main())
+```
+
+The example performs real Python operations. Its five-task plan becomes three executions through deduplication and removal of unused pure work. This demonstrates functionality, not a benchmark or a latency claim.
+
+### LLM planning and synthesis
+
+Configure `.env` from `.env.example`, then run:
+
+```bash
+uv run python -m examples.llm_orchestration "Count words in these texts: hello world; graphs enable parallel execution"
+```
+
+```python
+from src import ExecutionService, Settings, build_llm
+from examples.parallel_plan import build_registry
+
+async def run_request(request):
+    settings = Settings()
+    async with build_llm(settings) as model:
+        service = ExecutionService.from_model(build_registry(), model, settings)
+        result = await service.run(request)
+        return result
+```
+
+The built-in adapter uses OpenAI-compatible **Chat Completions**. JSON mode is the default; responses are locally validated against Pydantic and JSON Schema contracts, with bounded repair attempts. Optional `json_schema` mode is non-strict and still uses local validation. Models requiring a different API need an injected `LanguageModel` adapter. No live API request is required for `make demo`.
+
+`LLMAgent` accepts a model, a role prompt, an `AgentSpec`, and optional tools. Research the prompt techniques in the connected Research Agent before authoring or changing any prompt.
+
+### CLI and tracing
+
+```bash
+uv run python -m src "Your request" --factory your_app:create_service --trace run.jsonl
+```
+
+The factory returns an `ExecutionService` (directly or asynchronously), or an async context manager yielding one. A factory that owns an LLM client should use the context-manager form to close it. `--output report.json` writes the run report instead of printing it.
+
+```mermaid
+flowchart LR
+    RUN[Execution context] --> E[Structured events]
+    E --> M[In-memory trace]
+    E --> C[Optional callback]
+    M --> J[JSONL export]
+    RUN --> R[Run report]
+    R --> U[LLM calls, tool calls, tokens and estimated cost]
+    R --> T[Task results, optimization changes and timings]
+```
+
+Tracing does not emit prompts or task outputs by default. Reports do contain task outputs; store them accordingly. Token usage comes from provider responses. Calls with no returned usage still count as attempts. Cost estimates use explicitly configured per-million-token prices; zero defaults mean prices are unconfigured, not that the provider is free.
+
+| Setting prefix: `AGENTCOMPILER_` | Default |
+|---|---|
+| `MAX_CONCURRENCY` / `MAX_TASKS` | 4 / 128 across the run |
+| `MAX_ROUNDS` / `MAX_PLAN_ATTEMPTS` | 3 / 3 per structured invocation |
+| `MAX_TASK_ATTEMPTS` | 2, only for retry-safe agents |
+| `MAX_TOOL_CALLS` / `MAX_LLM_CALLS` | 12 per specialist invocation / 100 per run |
+| `RUN_TIMEOUT_SECONDS` / `TASK_TIMEOUT_SECONDS` | 300 / 60 |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_TOKENS` | 60 / 4096 |
+| `SCHEDULING` / `OPTIMIZE` | `fifo` / `true` |
+| `LLM_MODEL` / `STRUCTURED_MODE` | `gpt-4o-mini` / `json_object` |
+
+See [runtime settings](src/core/config.py) and [.env.example](.env.example) for every option.
 
 **All repository content must be written in English**, including documentation, diagrams, code comments, docstrings, prompts, and developer-facing messages. This project rule is recorded in [AGENTS.md](AGENTS.md).
 
-## Next steps
+## Implementation roadmap
 
 ```mermaid
 flowchart LR
@@ -293,11 +398,13 @@ flowchart LR
     G --> H[8. Demonstration and publication]
 ```
 
-| Now | Later |
+| Implemented | Deferred |
 |---|---|
-| AgentCompiler structure | Implementation and correctness tests |
-| Visual architecture documentation | Use case and benchmark design |
-| `benchmark/` scaffold | Reproducible results and measured charts |
+| Runtime, optimization passes, tools, and bounded replanning | Benchmark scenarios and protocol |
+| Visual documentation and runnable examples | Live-provider quality and latency evaluation |
+| FIFO and estimated critical-path scheduling | Streaming planning and further passes |
+
+Validation for this implementation consisted of syntax/lint checks and manual integration runs, including an actual SDK request to a local HTTP endpoint. Those runs exercised plan repair, synthesis, two-round replanning, tool execution, concurrency, serialization, retries, failures, reference validation, and deadline cleanup. They are not evidence of live-model quality or benchmark gains.
 
 ## References
 
