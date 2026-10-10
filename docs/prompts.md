@@ -1,5 +1,13 @@
 # Prompt research and implementation
 
+## Role in the new direction
+
+Prompts generate candidate plans; they do not establish correctness. The central hypothesis assigns encoded obligations to deterministic compilation and uses diagnostics to guide bounded correction. Existing prompts and their research provenance are unchanged in this documentation revision.
+
+Explicit state contracts, requirement coverage, richer repair policies, and smaller-model escalation remain proposed work. Prompt quality alone does not validate either research hypothesis.
+
+## Existing prompt provenance
+
 Each runtime prompt was authored after consulting the connected Research Agent MCP. Source references are also recorded in the corresponding Python modules.
 
 | Prompt | Research Agent sources | Applied technique |

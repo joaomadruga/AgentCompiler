@@ -1,133 +1,125 @@
 # AgentCompiler
 
-**Compiler-inspired agent orchestration through structured plans and dependency-driven execution.**
+**Turn LLM-generated action plans into checked programs before executing them.**
 
-A continuation of the undergraduate thesis **AgentCompiler: An LLM Compiler for Parallel Multi-Agent Orchestration**, by João Pedro de Moraes Madruga at the Federal University of Pernambuco (UFPE), Center for Informatics, supervised by Filipe Carlos de Albuquerque Calegario.
+A continuation of **AgentCompiler: An LLM Compiler for Parallel Multi-Agent Orchestration**, the undergraduate thesis by João Pedro de Moraes Madruga at UFPE, supervised by Filipe Carlos de Albuquerque Calegario. The reconstruction now centers on verifiable orchestration rather than parallelism alone.
 
-> **Status: implemented runtime.** DAG validation, optimization, asynchronous execution, LLM planning, tool-enabled specialists, synthesis, and bounded replanning are implemented. Integration was exercised with Python agents and a local Chat Completions endpoint. No unit tests were created or run. Live-provider quality and performance benchmarks remain unverified; `benchmark/` is still an empty scaffold.
+> **Status:** an orchestration runtime exists, with DAG/schema validation, optimization, bounded execution, structured-response repair, and replanning. The broader contract-driven compilation approach described below is a research direction. Neither hypothesis has been validated; `benchmark/` remains a scaffold.
 
-## Watch the execution
+## The problem: too much responsibility in the orchestrator
 
-[![Sequential multi-agents versus an optimized AgentCompiler DAG](docs/visuals/execution-flow.svg)](docs/visuals/execution-flow.html)
+Assume the baseline already has an orchestrator and parallel execution. It still asks the model to choose appropriate actions, supply compatible data, respect action constraints, and satisfy the request. In a long workflow, an unchecked planning mistake can propagate into later actions.
 
-**[Open the interactive animation](docs/visuals/execution-flow.html)** — playback, speed controls, and a timeline you can scrub. The DAG demonstrates contract-permitted deduplication, pure dead-task elimination, and dispatch as soon as dependencies are ready.
+```mermaid
+flowchart LR
+    U[User intent] --> O[LLM orchestrator]
+    O --> P[Action plan]
+    P --> E[Execution including parallel tasks]
+    E --> R[Result]
+    O -. Must get constraints and dependencies right .-> P
+```
 
-GitHub displays the static preview above. To watch the animation, download and open the self-contained HTML file in a browser, or serve the repository locally:
+The proposal is to express plans in a restricted action language with trusted contracts. The model proposes; a deterministic harness checks explicit properties, rejects invalid plans, and provides diagnostics for bounded correction.
+
+## Central hypothesis: verifiable action generation
+
+> **Agent plans expressed in a restricted language, with verifiable contracts and diagnostic-guided correction, can produce more reliable actions than unconstrained delegation to an orchestrator.**
+
+```mermaid
+flowchart TD
+    U[User intent] --> L[LLM proposes a program]
+    R[Trusted action registry and explicit requirements] --> C[Compile and check]
+    L --> C
+    C --> V{Declared checks pass?}
+    V -->|No| D[Specific diagnostics]
+    D --> B{Repair budget available?}
+    B -->|Yes| L
+    B -->|No| STOP[Stop without execution]
+    V -->|Yes| E[Dependency-driven execution]
+    E --> K[Check resolved inputs and actual outputs]
+    K --> F[Result or explicit failure]
+```
+
+| Language/compiler concept | Property to make explicit | Scope |
+|---|---|---|
+| Restricted intermediate representation | Only registered actions, explicit arguments and references | Existing structured-plan foundation |
+| Types and contracts | Compatible inputs, references and structured outputs | Existing schema/graph checks; partial static knowledge |
+| Preconditions and postconditions | Required state before an action and verified state afterward | Proposed explicit contract layer |
+| Effect system | Permitted state changes and conflicts between actions | Existing effect metadata; broader enforcement proposed |
+| Requirement coverage analysis | Every formalized requirement has an accountable output/check | Proposed; intent must first be translated correctly |
+| Compiler diagnostics and repair | Explain the violated rule and bound correction attempts | Existing validation feedback; richer diagnostics proposed |
+
+**A validated plan satisfies the checks encoded in the harness. It does not automatically understand the user's intent, establish factual truth, or guarantee overall answer quality.** State-dependent conditions must be rechecked at execution time; validation cannot guarantee an external service will succeed.
+
+### A sequential example where compilation matters
+
+Illustrative action contracts, not a shipped domain integration:
+
+```mermaid
+flowchart LR
+    A[Locate purchase] --> B[Cancel purchase]
+    B --> C[Refund payment]
+    C -. Missing payment and refundable amount evidence .-> D[Reject plan before execution]
+```
+
+```mermaid
+flowchart LR
+    A[Locate purchase] --> B[Verify payment]
+    B --> C[Determine refundable amount]
+    C --> D[Cancel purchase]
+    D --> E[Refund payment using verified inputs]
+```
+
+The compiler catches the missing prerequisite because the action contract declares it. This example remains sequential: the potential benefit is preventing an invalid action sequence, not adding concurrency. A complete contract must also address authorization, current state, and effects; this simplified illustration is not a refund policy.
+
+## Secondary hypothesis: smaller orchestrators
+
+> **If verifiable constraints reduce the planning burden, a smaller model with bounded diagnostic-guided repair may achieve comparable reliability to a stronger orchestrator at lower total cost and latency.**
+
+```mermaid
+flowchart LR
+    M[Smaller model proposes] --> C[Compile and check]
+    C -->|Valid| E[Execute]
+    C -->|Invalid| D[Diagnostics]
+    D --> R[Bounded correction]
+    R --> C
+    R -. Persistent failure: proposed policy .-> S[Stronger model or stop]
+```
+
+This is a consequence to investigate, **not the central hypothesis or an established gain**. Retries and escalation may erase savings. Evaluation must count planning, validation, repair, escalation, execution, and failed attempts. The current runtime does not implement automatic model escalation.
+
+| Priority | Question | Evidence needed |
+|---|---|---|
+| Central | Does compilation plus diagnostic-guided repair improve action reliability? | Compare with an orchestrated, parallel-capable baseline; separate contract violations from intent and task success |
+| Secondary | Can a smaller planner preserve reliability while reducing resources? | Compare models with/without the harness; count total latency, cost, retries and escalation |
+| Supporting | Do optimizations and scheduling reduce execution work? | Isolate those contributions rather than attributing all gains to compilation |
+
+## Watch the hypothesis
+
+[![From unchecked delegation to checked action programs](docs/visuals/execution-flow.svg)](docs/visuals/execution-flow.html)
+
+**[Open the interactive animation](docs/visuals/execution-flow.html)** — follow an invalid proposal through diagnosis, correction, validation, and execution. A separate optional lane illustrates the smaller-model hypothesis.
+
+GitHub shows the static preview. Download and open the self-contained HTML, or serve the repository locally:
 
 ```bash
 python -m http.server 8000
 # Open http://localhost:8000/docs/visuals/execution-flow.html
 ```
 
-> The times are illustrative, not benchmark results. The baseline is a sequential workflow; other multi-agent frameworks can also execute tasks concurrently. Planning and final synthesis are excluded; a simulated compilation phase is included.
+The animation is conceptual: playback timing is not execution latency, and no benchmark gains are depicted.
 
-## Overview
-
-```mermaid
-flowchart LR
-    U[User request] --> O[LLM orchestrator]
-    R[Agent registry] --> O
-    O --> P[Task plan: DAG]
-    P --> C[Python compiler]
-    C --> A[Specialized agents]
-    A --> S[Synthesis and evaluation]
-    S --> F[Final response]
-    S -. New plan using previous results .-> O
-```
-
-| The LLM decides | Python controls |
-|---|---|
-| Request decomposition | Contract and graph validation |
-| Required specialists | Contract-permitted optimizations |
-| Inputs and semantic dependencies | Scheduling and concurrency |
-| Synthesis and whether to replan | State, limits, failures, and results |
-
-## Why a graph?
-
-A task may feed multiple consumers, and a task may depend on multiple results. The plan explicitly represents these relationships as a **directed acyclic graph (DAG)**.
+## Existing runtime foundation
 
 ```mermaid
 flowchart LR
-    A[Retrieve document A] --> B[Summarize A]
-    A --> C[Classify A]
-    D[Retrieve document B] --> E[Summarize B]
-    D --> F[Classify B]
-    B --> G[Compare documents]
-    C --> G
-    E --> G
-    F --> G
-    G --> H[Response]
+    O[LLM structured plan] --> V[Graph and schema validation]
+    V --> P[Contract-permitted optimization passes]
+    P --> S[Scheduler and executor]
+    S --> F[Synthesis or bounded replanning]
 ```
 
-**Dependencies determine readiness; position in the plan does not impose a barrier.** Summarizing A can start as soon as retrieving A finishes, even while retrieving B is still running.
-
-## Compiler pipeline
-
-```mermaid
-flowchart TD
-    P[Orchestrator plan] --> V[Validate]
-    V -->|Valid| OPT[Apply optimization passes]
-    V -->|Invalid| ERR[Return errors to orchestrator]
-    OPT --> Q[Scheduler: ready tasks]
-    Q --> E[Async executor]
-    E --> A[Registered agent]
-    A --> M[Record result or failure]
-    M -->|Release successors| Q
-    M -->|Execution completed or blocked| S[Synthesis or replanning]
-```
-
-| Stage | Runtime responsibility |
-|---|---|
-| Validation | Unique IDs, registered agents, valid references, compatible contracts, and absence of cycles |
-| Optimization | Transform the graph while preserving requested outputs and declared effects |
-| Scheduler | Release tasks with satisfied dependencies within the concurrency limit |
-| Executor | Invoke agents, enforce limits, and record completion or failure |
-| Synthesis | Produce the response or request another planning round |
-
-### Plan contracts
-
-```mermaid
-classDiagram
-    class ExecutionPlan {
-        tasks
-        requested_outputs
-    }
-    class Task {
-        id
-        agent_id
-        instruction
-        inputs
-        dependencies
-
-    }
-    class AgentSpec {
-        input_schema
-        output_schema
-        effect
-        reusable
-        retry_safe
-        concurrent
-    }
-    class OutputReference {
-        task_id
-        output_field
-    }
-    class TaskResult {
-        task_id
-        status
-        output
-        error
-        usage
-    }
-    ExecutionPlan "1" --> "*" Task
-    Task --> AgentSpec : agent_id
-    Task --> OutputReference : referenced inputs
-    Task --> TaskResult : produces
-```
-
-Tasks bind named inputs to literal JSON values or references to earlier outputs. Reference paths use RFC 6901 JSON pointers: `""` selects the entire output, and `"/words"` selects a field. References create dependencies automatically; `dependencies` adds semantic ordering constraints.
-
-Agent schemas and effect declarations come from the trusted registry, not from the LLM. Contracts are validated before execution where their shape is known and again against actual inputs and outputs at runtime.
+The DAG represents dependencies and shared results; it is not itself a correctness guarantee. Trusted agent schemas and effect declarations come from the registry. Static checks use available schema information; resolved inputs and actual outputs are checked at runtime. The extended action language and state contracts remain to be designed.
 
 ## Implemented optimizations
 
@@ -400,26 +392,20 @@ See [runtime settings](src/core/config.py) and [.env.example](.env.example) for 
 
 **All repository content must be written in English**, including documentation, diagrams, code comments, docstrings, prompts, and developer-facing messages. This project rule is recorded in [AGENTS.md](AGENTS.md).
 
-## Implementation roadmap
+## Research roadmap
 
 ```mermaid
 flowchart LR
-    A[1. Scaffold and documentation] --> B[2. Contracts and validation]
-    B --> C[3. Executor and scheduler]
-    C --> D[4. Optimization passes]
-    D --> E[5. Orchestrator and LLM integration]
-    E --> F[6. Replanning]
-    F --> G[7. Benchmark design]
-    G --> H[8. Demonstration and publication]
+    A[Existing runtime foundation] --> B[Define action language and guarantees]
+    B --> C[Specify diagnostics and bounded repair]
+    C --> D[Evaluate central reliability hypothesis]
+    D --> E[Evaluate smaller-model hypothesis]
+    E --> F[Demonstration and publication]
 ```
 
-| Implemented | Deferred |
-|---|---|
-| Runtime, optimization passes, tools, and bounded replanning | Benchmark scenarios and protocol |
-| Visual documentation and runnable examples | Live-provider quality and latency evaluation |
-| FIFO and estimated critical-path scheduling | Streaming planning and further passes |
+The current runtime is a foundation, not an implementation of every proposed guarantee. Explicit state preconditions/postconditions, requirement coverage checks, formal effect policies, and automatic model escalation are proposed work. Benchmark design remains deferred; no runtime changes are part of this documentation revision.
 
-Validation for this implementation consisted of syntax/lint checks and manual integration runs, including an actual SDK request to a local HTTP endpoint. Those runs exercised plan repair, synthesis, two-round replanning, tool execution, concurrency, serialization, retries, failures, reference validation, and deadline cleanup. They are not evidence of live-model quality or benchmark gains.
+See [architecture](docs/architecture.md), [research hypotheses](docs/research.md), and [roadmap](docs/roadmap.md) for scope and evidence boundaries. Previous manual integrations are functionality checks, not evidence that either hypothesis holds.
 
 ## References
 

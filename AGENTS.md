@@ -4,9 +4,15 @@
 
 Rebuild AgentCompiler as an organized Python project that applies compiler techniques to the orchestration of specialized agents. This is a continuation of João Pedro de Moraes Madruga's undergraduate thesis at UFPE, supervised by Filipe Carlos de Albuquerque Calegario.
 
-The goal is to go beyond running independent calls concurrently: represent work explicitly, eliminate unnecessary work, manage data dependencies, and reduce execution latency while preserving task correctness and output quality.
+The central goal is verifiable action generation: express LLM-proposed plans in a restricted language, check trusted contracts deterministically, and provide precise diagnostics for bounded correction. Assume existing systems already have orchestration and parallel execution; those capabilities alone are not the contribution.
 
-The final deliverable is a working, documented AgentCompiler with meaningful, reproducible benchmarks and a concrete demonstration. Those results will support a LinkedIn post explaining the thesis, the reconstruction, the architectural choices, and the measured benefits and limitations. Do not invent gains or optimize for promotional claims.
+**Central hypothesis:** restricted action programs with verifiable contracts and diagnostic-guided correction can improve action reliability over unconstrained delegation to an orchestrator.
+
+**Secondary hypothesis:** reduced planning burden may allow a smaller model with bounded repair to approach a stronger orchestrator's reliability at lower total cost and latency. This is subordinate, unvalidated, and must account for all retries and escalation.
+
+Guarantee only explicitly encoded properties under trusted contract assumptions. Do not claim that compilation guarantees intent interpretation, factual truth, answer quality, or external success. Explicit state preconditions/postconditions, requirement coverage, richer effect enforcement, and automatic model escalation are proposed extensions, not existing functionality.
+
+The final deliverable is a working, documented AgentCompiler with reproducible evidence for these hypotheses. A demonstration and LinkedIn post should explain the contribution, measured findings, and limitations without invented gains. Scheduling and optimization are supporting capabilities.
 
 ## Research and architectural references
 
@@ -33,14 +39,13 @@ The benchmark design is intentionally deferred. Do not carry over the old datase
 
 The planned sequence is:
 
-1. Define agent contracts and the task plan's intermediate representation.
-2. Validate plans, references, contracts, and dependency cycles.
-3. Implement dependency-driven scheduling and bounded asynchronous execution.
-4. Add independently testable optimization passes.
-5. Integrate the LLM orchestrator, specialized agents, tools, and synthesis.
-6. Add bounded replanning that preserves valid previous results.
-7. Design benchmarks around meaningful use cases and measurable advantages.
-8. Produce reproducible reports, a demonstration, and material for the LinkedIn post.
+1. Define the restricted action language and its verifiable guarantees using the existing runtime as a foundation.
+2. Specify trusted types, state preconditions/postconditions, effect policies and formalized requirement coverage.
+3. Define diagnostics, bounded repair, dynamic checks and explicit termination semantics.
+4. Agree on a benchmark with an orchestrated, parallel-capable baseline.
+5. Evaluate the central action-reliability hypothesis.
+6. Evaluate the secondary smaller-model hypothesis with full resource accounting.
+7. Produce a demonstration and publication grounded in measured evidence.
 
 This sequence is a direction, not authorization to implement every stage during an unrelated or narrowly scoped request. Follow the user's current task and accepted decisions.
 
@@ -106,7 +111,7 @@ Dead task elimination starts from the declared requested outputs and preserves r
 
 ## Future benchmark requirements
 
-All benchmark work stays inside `benchmark/`, and its design must be revisited with the user. Once defined, it should explain both the use case and the source of any advantage.
+All benchmark work stays inside `benchmark/`, and its design must be revisited with the user. Once defined, it should prioritize the central action-reliability hypothesis, then the secondary smaller-model hypothesis. The baseline must not be artificially limited to sequential execution. Explain the use case and isolate the contribution of compilation, diagnostics, repair, optimizations and scheduling.
 
 Preserve reference answers separately from generated outputs. Record reproducible configuration, source revision, tools, model settings, limits, failures, and repetitions. Measure total request latency and its stages; distinguish LLM calls, agent executions, and tool calls. Evaluate output quality alongside latency and resource usage.
 
