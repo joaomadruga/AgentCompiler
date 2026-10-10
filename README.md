@@ -6,6 +6,21 @@ A continuation of the undergraduate thesis **AgentCompiler: An LLM Compiler for 
 
 > **Status: implemented runtime.** DAG validation, optimization, asynchronous execution, LLM planning, tool-enabled specialists, synthesis, and bounded replanning are implemented. Integration was exercised with Python agents and a local Chat Completions endpoint. No unit tests were created or run. Live-provider quality and performance benchmarks remain unverified; `benchmark/` is still an empty scaffold.
 
+## Watch the execution
+
+[![Sequential multi-agents versus an optimized AgentCompiler DAG](docs/visuals/execution-flow.svg)](docs/visuals/execution-flow.html)
+
+**[Open the interactive animation](docs/visuals/execution-flow.html)** — playback, speed controls, and a timeline you can scrub. The DAG demonstrates contract-permitted deduplication, pure dead-task elimination, and dispatch as soon as dependencies are ready.
+
+GitHub displays the static preview above. To watch the animation, download and open the self-contained HTML file in a browser, or serve the repository locally:
+
+```bash
+python -m http.server 8000
+# Open http://localhost:8000/docs/visuals/execution-flow.html
+```
+
+> The times are illustrative, not benchmark results. The baseline is a sequential workflow; other multi-agent frameworks can also execute tasks concurrently. Planning and final synthesis are excluded; a simulated compilation phase is included.
+
 ## Overview
 
 ```mermaid
